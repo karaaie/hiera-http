@@ -7,6 +7,12 @@ class Hiera
         require 'net/https'
         @config = Config[:http]
 
+        #these are keys that we're actually going to try to lookup
+        #this is a performance optimization to remove http calls which we know
+        #before hand will not yield any result.
+        #an empty set indicates that it will try to lookup all given keys.
+        @available_keys = @config[:keys] || {}
+
         @http = Net::HTTP.new(@config[:host], @config[:port])
         @http.read_timeout = @config[:http_read_timeout] || 10
         @http.open_timeout = @config[:http_connect_timeout] || 10
@@ -29,11 +35,15 @@ class Hiera
 
       def lookup(key, scope, order_override, resolution_type)
 
+        #stop execution if the key is not pre-configured.
+        unless @available_keys.has_key?(key) and not @available_keys.empty? do
+          return nil
+        end
+
         answer = nil
 
         paths = @config[:paths].map { |p| Backend.parse_string(p, scope, { 'key' => key }) }
         paths.insert(0, order_override) if order_override
-
 
         paths.each do |path|
 
@@ -42,6 +52,7 @@ class Hiera
 
           begin
             httpres = @http.request(httpreq)
+            Hiera.debug("[hiera-http]: result receivied #{httpres}")
           rescue Exception => e
             Hiera.warn("[hiera-http]: Net::HTTP threw exception #{e.message}")
             raise Exception, e.message unless @config[:failure] == 'graceful'
@@ -63,15 +74,15 @@ class Hiera
           parsed_result = Backend.parse_answer(result, scope)
 
           case resolution_type
-          when :array
-            answer ||= []
-            answer << parsed_result
-          when :hash
-            answer ||= {}
-            answer = parsed_result.merge answer
-          else
-            answer = parsed_result
-            break
+            when :array
+              answer ||= []
+              answer << parsed_result
+            when :hash
+              answer ||= {}
+              answer = parsed_result.merge answer
+            else
+              answer = parsed_result
+              break
           end
         end
         answer
@@ -86,30 +97,31 @@ class Hiera
 
         case @config[:output]
 
-        when 'plain'
-          # When the output format is configured as plain we assume that if the
-          # endpoint URL returns an HTTP success then the contents of the response
-          # body is the value itself, or nil.
-          #
-          answer
-        when 'json'
-          # If JSON is specified as the output format, assume the output of the
-          # endpoint URL is a JSON document and return keypart that matched our
-          # lookup key
-          self.json_handler(key,answer)
-        when 'yaml'
-          # If YAML is specified as the output format, assume the output of the
-          # endpoint URL is a YAML document and return keypart that matched our
-          # lookup key
-          self.yaml_handler(key,answer)
-        else
-          answer
+          when 'plain'
+            # When the output format is configured as plain we assume that if the
+            # endpoint URL returns an HTTP success then the contents of the response
+            # body is the value itself, or nil.
+            #
+            answer
+          when 'json'
+            # If JSON is specified as the output format, assume the output of the
+            # endpoint URL is a JSON document and return keypart that matched our
+            # lookup key
+            self.json_handler(key,answer)
+          when 'yaml'
+            # If YAML is specified as the output format, assume the output of the
+            # endpoint URL is a YAML document and return keypart that matched our
+            # lookup keyi
+            $stderr.puts "yaml case"
+            self.yaml_handler(key,answer)
+          else
+            answer
         end
       end
 
       # Handlers
       # Here we define specific handlers to parse the output of the http request
-      # and return a value.  Currently we support YAML and JSON
+      # and return a value. Currently we support YAML and JSON
       #
       def json_handler(key,answer)
         require 'rubygems'
@@ -117,12 +129,18 @@ class Hiera
         JSON.parse(answer)[key]
       end
 
-      def yaml_handler(answer)
-        require 'yaml'
-        YAML.parse(answer)[key]
+      def yaml_handler(key,answer)
+        begin
+          require 'yaml'
+          y = YAML.load answer
+          y[key]
+        rescue Exception => e
+          $stderr.puts "failed to parse: #{e.message}"
+          $stderr.puts e.backtrack
+        end
       end
 
+        end
     end
   end
 end
-
