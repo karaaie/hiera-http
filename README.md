@@ -17,6 +17,10 @@ The following is an example hiera.yaml configuration for use with hiera-http
       :port: 5984
       :output: json
       :failure: graceful
+      :keys:
+        my-key-a
+        my-key-b
+        my-key-c
       :paths:
         - /configuration/%{fqdn}
         - /configuration/%{env}
@@ -34,6 +38,12 @@ The following are optional configuration parameters
 `:failure: ` : When set to `graceful` will stop hiera-http from throwing an exception in the event of a connection error, timeout or invalid HTTP response and move on.  Without this option set hiera-http will throw an exception in such circumstances
 
 `:ignore_404: ` : If `failure` is _not_ set to `graceful` then any error code received from the HTTP response will throw an exception.  This option makes 404 responses exempt from exceptions.  This is useful if you expect to get 404's for data items not in a certain part of the hierarchy and need to fall back to the next level in the hierarchy, but you still want to bomb out on other errors.
+
+The `:keys:` parameter takes keys that you wish to look-up through http.
+If you don't supply this parameter all lookups will be requested against your http backend.
+If you do supply keys only the given keys will be requested from your http-backend, all others will immediatly return.
+
+
 
 The `:paths:` parameter can also parse the lookup key, eg:
 
