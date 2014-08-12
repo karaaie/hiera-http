@@ -11,7 +11,7 @@ class Hiera
         #this is a performance optimization to remove http calls which we know
         #before hand will not yield any result.
         #an empty set indicates that it will try to lookup all given keys.
-        #@available_keys = @config[:keys] || []
+        @available_keys = @config[:keys] || []
 
         @http = Net::HTTP.new(@config[:host], @config[:port])
         @http.read_timeout = @config[:http_read_timeout] || 10
@@ -91,6 +91,10 @@ class Hiera
         #  return nil
         #end
 
+        if not @available_keys.include?(key) and not @available_keys.empty?
+          return nil
+        end
+
         answer = nil
 
         paths = @config[:paths].map { |p| Backend.parse_string(p, scope, { 'key' => key }) }
@@ -138,7 +142,7 @@ class Hiera
         end
         answer
       end
-      
+
     end
   end
 end
